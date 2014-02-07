@@ -552,12 +552,12 @@ class Compiler(object):
     }
 
     @staticmethod
-    def __parse_expr_one_side(side):
+    def __parse_expr_one_side(side, with_prio):
 
         if isinstance(side, (Field, Function)):  # field
             return side.fullname
         elif isinstance(side, Expr):  # expression
-            return Compiler.parse_expr(side)
+            return Compiler.parse_expr(side, with_prio)
         elif isinstance(side, Query):  # sub query
             return '(%s)' % side.sql
         elif type(side) in Compiler.conversions:  # common value
@@ -567,18 +567,19 @@ class Compiler(object):
                                   " expression" % str(type(side)))
 
     @staticmethod
-    def parse_expr(expr):
+    def parse_expr(expr, with_prio=False):
 
         cache = Compiler.expr_cache
+        ident = (with_prio, expr)
 
         # check cache at first
-        if expr in cache:  # `in` statement uses `__hash__` and then `__eq__`
-            return cache[expr]
+        if ident in cache:  # `in` statement uses `__hash__` and then `__eq__`
+            return cache[ident]
 
         # make alias
         l, op, r = expr.left, expr.op, expr.right
         OP_MAPPING = Compiler.OP_MAPPING
-        tostr = Compiler.__parse_expr_one_side
+        tostr = lambda side: Compiler.__parse_expr_one_side(side, with_prio)
 
         string = None
 
@@ -591,7 +592,10 @@ class Compiler(object):
                 tostr(l), ' not' if op is OP_NOT_IN else '', ', '.join(tostr(value) for value in r)
             )
 
-        cache[expr] = string  # set cache
+        if with_prio:
+            string = '(%s)' % string
+
+        cache[ident] = string  # set cache
 
         return string
 
@@ -626,7 +630,7 @@ class Compiler(object):
         if not lst:
             return ''
         return ' where %s' % (' and '.join(
-            Compiler.parse_expr(expr) for expr in lst))
+            Compiler.parse_expr(expr, with_prio=True) for expr in lst))
 
     @staticmethod
     def parse_select(lst):
